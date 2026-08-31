@@ -1,4 +1,26 @@
-# vinext-starter
+# Chai N Pani ordering website
+
+A phone-first restaurant menu with cart, editable GPS-assisted delivery address,
+UPI app/QR payment, and a prefilled WhatsApp order for Chai N Pani.
+
+## Deploy on Vercel
+
+1. Import `ravi3594444/chai-n-pani` in Vercel.
+2. Keep the detected framework as **Next.js**.
+3. Deploy. `vercel.json` runs the dedicated Vercel build automatically.
+
+No environment variables are required for the current menu. Vercel HTTPS allows
+the browser to request GPS permission, and `/api/reverse-geocode` keeps the
+editable OpenStreetMap address lookup working.
+
+## Payment behavior
+
+Google Pay, PhonePe, and Paytm buttons use package-specific Android intents with
+the payee, amount, and order reference prefilled. If a phone browser blocks a
+targeted app intent, the site shows a retry page instead of silently opening a
+different bank app. The generic UPI link and QR remain available separately.
+
+## Sites development notes
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and

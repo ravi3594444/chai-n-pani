@@ -2,7 +2,14 @@
 
 import { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { UPI_APPS, UPI_ID, UPI_PAYEE_NAME } from "../payment-config";
+import {
+  UPI_APPS,
+  UPI_ID,
+  UPI_PAYEE_NAME,
+  createAndroidUpiIntentUrl,
+  createUpiQuery,
+  createUpiUrl,
+} from "../payment-config";
 
 type PaymentFallbackDetails = {
   appId: string;
@@ -23,17 +30,13 @@ function UpiPaymentContent() {
   }, [query]);
 
   const selectedApp = UPI_APPS.find((app) => app.id === details.appId) || UPI_APPS[0];
-  const upiUrl = useMemo(() => {
-    const params = new URLSearchParams({
-      pa: UPI_ID,
-      pn: UPI_PAYEE_NAME,
-      am: details.amount,
-      cu: "INR",
-      tn: `Chai N Pani order ${details.orderId}`,
-      tr: details.orderId,
-    });
-    return `upi://pay?${params.toString()}`;
-  }, [details]);
+  const paymentLinks = useMemo(() => {
+    const query = createUpiQuery(details.amount, details.orderId);
+    return {
+      anyUpiApp: createUpiUrl(query),
+      selectedAndroidApp: createAndroidUpiIntentUrl(selectedApp, query),
+    };
+  }, [details, selectedApp]);
 
   return (
     <main className="upi-fallback-page">
@@ -41,7 +44,7 @@ function UpiPaymentContent() {
         <p className="eyebrow">Chai N Pani · UPI payment</p>
         <div className="upi-fallback-logo"><img src={selectedApp.logo} alt={`${selectedApp.name} logo`} /></div>
         <h1>Open your payment app</h1>
-        <p className="upi-fallback-copy">Your browser could not open {selectedApp.name} directly. Tap below, then choose {selectedApp.name} or any installed UPI app on your phone.</p>
+        <p className="upi-fallback-copy">Your browser did not open {selectedApp.name} on the first attempt. Retry the selected app below. This button targets {selectedApp.name} only and will not intentionally open another bank app.</p>
 
         <div className="upi-fallback-summary">
           <span>Amount</span><strong>₹ {details?.amount || "—"}</strong>
@@ -50,9 +53,10 @@ function UpiPaymentContent() {
           <span>Order</span><strong>{details?.orderId || "—"}</strong>
         </div>
 
-        <a className="upi-fallback-primary" href={upiUrl}>Choose an installed UPI app</a>
+        <a className="upi-fallback-primary" href={paymentLinks.selectedAndroidApp}>Try {selectedApp.name} again · ₹ {details.amount}</a>
+        <a className="upi-fallback-any" href={paymentLinks.anyUpiApp}>Use any UPI app instead</a>
         <button className="upi-fallback-back" type="button" onClick={() => window.history.length > 1 ? window.history.back() : window.location.assign("/")}>Back to my order</button>
-        <p className="upi-fallback-note">The amount and payee are prefilled. Verify both before entering your UPI PIN. Return to the order after payment to send the UTR and screenshot on WhatsApp.</p>
+        <p className="upi-fallback-note">If the selected app still does not open, open this page in Chrome or scan the QR from another phone. The amount and payee remain prefilled. Return to the order after payment to send the UTR and screenshot on WhatsApp.</p>
       </section>
     </main>
   );

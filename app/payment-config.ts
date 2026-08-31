@@ -8,3 +8,26 @@ export const UPI_APPS = [
 ] as const;
 
 export type UpiApp = (typeof UPI_APPS)[number];
+
+export const createUpiQuery = (amount: string, orderId: string) => new URLSearchParams({
+  pa: UPI_ID,
+  pn: UPI_PAYEE_NAME,
+  am: amount,
+  cu: "INR",
+  tn: `Chai N Pani order ${orderId}`,
+  tr: orderId,
+}).toString();
+
+export const createUpiUrl = (query: string) => `upi://pay?${query}`;
+
+export const createAndroidUpiIntentUrl = (
+  app: UpiApp,
+  query: string,
+  fallbackUrl?: string,
+) => {
+  const fallback = fallbackUrl
+    ? `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};`
+    : "";
+
+  return `intent://pay?${query}#Intent;scheme=upi;package=${app.packageName};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;${fallback}end`;
+};

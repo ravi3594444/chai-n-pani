@@ -233,8 +233,9 @@ img { display: block; }
 .upi-fallback-summary { margin: 24px 0; padding: 16px; display: grid; grid-template-columns: 1fr auto; gap: 11px 16px; border-radius: 16px; background: var(--bone); font-size: 12px; }
 .upi-fallback-summary span { color: var(--muted); }
 .upi-fallback-summary strong { max-width: 230px; color: var(--ink); text-align: right; overflow-wrap: anywhere; }
-.upi-fallback-primary, .upi-fallback-back { width: 100%; min-height: 54px; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; font-weight: 900; text-decoration: none; }
+.upi-fallback-primary, .upi-fallback-any, .upi-fallback-back { width: 100%; min-height: 54px; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; font-weight: 900; text-decoration: none; }
 .upi-fallback-primary { border: 0; background: var(--rust); color: #fff; box-shadow: 0 14px 30px rgba(183,73,45,.2); }
+.upi-fallback-any { margin-top: 10px; border: 1px solid var(--ink); background: #fff; color: var(--ink); }
 .upi-fallback-back { margin-top: 10px; border: 1px solid var(--line); background: transparent; color: var(--ink); }
 .upi-fallback-note { margin: 15px 0 0; color: var(--muted); text-align: center; font-size: 10px; line-height: 1.5; }
 

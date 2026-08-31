@@ -2,7 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { clientCategories, type ClientMenuItem } from "./menu-data";
-import { UPI_APPS, UPI_ID, UPI_PAYEE_NAME, type UpiApp } from "./payment-config";
+import {
+  UPI_APPS,
+  UPI_ID,
+  createAndroidUpiIntentUrl,
+  createUpiQuery,
+  createUpiUrl,
+  type UpiApp,
+} from "./payment-config";
 
 type CartLine = {
   item: ClientMenuItem;
@@ -73,15 +80,9 @@ export default function Home() {
   const basketQuantity = basket.reduce((sum, line) => sum + line.quantity, 0);
   const basketTotal = basket.reduce((sum, line) => sum + Number(line.item.price) * line.quantity, 0);
   const focusedQuantity = focused ? basket.find((line) => cartKey(line.item) === cartKey(focused))?.quantity ?? 0 : 0;
-  const upiParams = new URLSearchParams({
-    pa: UPI_ID,
-    pn: UPI_PAYEE_NAME,
-    am: basketTotal.toFixed(2),
-    cu: "INR",
-    tn: `Chai N Pani order ${orderId || "payment"}`,
-    tr: orderId || "CHAI-N-PANI",
-  });
-  const upiUrl = `upi://pay?${upiParams.toString()}`;
+  const paymentOrderId = orderId || "CHAI-N-PANI";
+  const upiQuery = createUpiQuery(basketTotal.toFixed(2), paymentOrderId);
+  const upiUrl = createUpiUrl(upiQuery);
   const locationPreviewUrl = deliveryLocation
     ? `https://maps.google.com/maps?q=${deliveryLocation.latitude},${deliveryLocation.longitude}&z=17&output=embed`
     : "";
@@ -231,19 +232,19 @@ export default function Home() {
   };
 
   const openUpiApp = (app: UpiApp) => {
-    if (!/Android/i.test(navigator.userAgent)) {
-      window.location.assign(upiUrl);
-      return;
-    }
-
     const fallbackQuery = new URLSearchParams({
       app: app.id,
       amount: basketTotal.toFixed(2),
-      order: orderId || "CHAI-N-PANI",
+      order: paymentOrderId,
     });
     const fallbackUrl = `${window.location.origin}/upi-payment?${fallbackQuery.toString()}`;
-    const intentUrl = `intent://pay?${upiParams.toString()}#Intent;scheme=upi;package=${app.packageName};S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
-    window.location.assign(intentUrl);
+
+    if (!/Android/i.test(navigator.userAgent)) {
+      window.location.assign(fallbackUrl);
+      return;
+    }
+
+    window.location.assign(createAndroidUpiIntentUrl(app, upiQuery, fallbackUrl));
   };
 
   const updatePhone = (value: string) => {
@@ -543,7 +544,7 @@ export default function Home() {
                   ))}
                 </div>
                 <a className="upi-any-button" href={upiUrl}>Use any other UPI app · ₹ {basketTotal}</a>
-                <p className="payment-footnote">The selected app opens directly when your phone allows it. If the browser blocks that app, Chai N Pani will show a safe button to choose an installed UPI app—never the Play Store. The amount, payee and order reference stay prefilled.</p>
+                <p className="payment-footnote">Each branded button targets only the selected Android app with the amount, payee and order reference prefilled. If your browser blocks direct app opening, a retry page appears instead of silently opening a different bank app. “Any other UPI app” remains a separate option.</p>
 
                 <div className="payment-divider"><span>or scan to pay</span></div>
                 <div className="qr-payment-card">
