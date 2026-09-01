@@ -1,8 +1,12 @@
 "use client";
 
-import { createUpiChooserIntentUrl, createUpiUrl } from "./payment-config";
-
-export type LaunchStep = { url: string; waitMs: number; label: string };
+import {
+  createAndroidUpiIntentUrl,
+  createIosUpiUrl,
+  createUpiChooserIntentUrl,
+  createUpiUrl,
+  type UpiApp,
+} from "./payment-config";
 
 type NavigatorWithUaData = Navigator & { userAgentData?: { platform?: string } };
 
@@ -13,79 +17,67 @@ export const isAndroid = (): boolean => {
   return /android/i.test(navigator.userAgent);
 };
 
-const openUrl = (url: string) => {
-  try {
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.rel = "noopener noreferrer";
-    anchor.style.display = "none";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-  } catch {
-    window.location.href = url;
-  }
+export const isIos = (): boolean => {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
 };
+
+/** In-app browsers cannot launch UPI apps at all — worth telling the user plainly. */
+export const isInAppBrowser = (): boolean => {
+  if (typeof navigator === "undefined") return false;
+  return /FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat|Twitter/i.test(navigator.userAgent);
+};
+
+export const buildUpiAppUrl = (app: UpiApp, query: string, fallbackUrl: string): string => {
+  if (isAndroid()) return createAndroidUpiIntentUrl(app, query, fallbackUrl);
+  if (isIos()) return createIosUpiUrl(app, query);
+  return createUpiUrl(query);
+};
+
+export const buildUpiChooserUrl = (query: string, fallbackUrl: string): string =>
+  isAndroid() ? createUpiChooserIntentUrl(query, fallbackUrl) : createUpiUrl(query);
 
 /**
- * Android: one unpinned chooser intent, carrying a browser fallback so a miss
- * lands on our retry page rather than the Play Store.
- * Everywhere else (iOS, in-app WebViews, desktop): the bare upi:// scheme, which
- * is all those environments understand.
+ * Fires the deep link and reports back only if the app appears not to have opened.
+ *
+ * Two rules this encodes, both learned the hard way:
+ *
+ * 1. The navigation MUST happen synchronously inside the tap handler. Chrome
+ *    consumes the user activation on the first navigation, so a second deep link
+ *    fired later from a setTimeout is blocked outright. An earlier version tried
+ *    a timed cascade of three URLs; only the first one could ever have run.
+ * 2. The timer therefore never navigates anywhere. It only reveals fallback UI.
+ *    Chrome's own S.browser_fallback_url handles the app-not-installed case.
  */
-export const buildUpiLaunchSteps = (query: string, fallbackUrl: string): LaunchStep[] => {
-  const label = "Opening your UPI app…";
-  if (isAndroid()) {
-    return [
-      { url: createUpiChooserIntentUrl(query, fallbackUrl), waitMs: 1800, label },
-      { url: createUpiUrl(query), waitMs: 1500, label },
-    ];
-  }
-  return [{ url: createUpiUrl(query), waitMs: 1800, label }];
-};
+export const launchUpi = (url: string, onProbablyFailed: () => void): (() => void) => {
+  let settled = false;
 
-export type LaunchHandlers = {
-  onStep?: (label: string, index: number, total: number) => void;
-  onExhausted: () => void;
-};
-
-export const launchUpiSequence = (
-  steps: LaunchStep[],
-  handlers: LaunchHandlers,
-): (() => void) => {
-  let index = 0;
-  let opened = false;
-  let cancelled = false;
-  let timer: number | undefined;
-
-  const markOpened = () => { opened = true; };
-  const markOpenedIfHidden = () => {
-    if (document.visibilityState === "hidden" || document.hidden) opened = true;
+  const settle = () => { settled = true; };
+  const settleIfHidden = () => {
+    if (document.visibilityState === "hidden" || document.hidden) settled = true;
   };
+
+  document.addEventListener("visibilitychange", settleIfHidden);
+  window.addEventListener("pagehide", settle);
+  window.addEventListener("blur", settle);
 
   const cleanup = () => {
-    cancelled = true;
-    document.removeEventListener("visibilitychange", markOpenedIfHidden);
-    window.removeEventListener("pagehide", markOpened);
-    window.removeEventListener("blur", markOpened);
-    if (timer !== undefined) window.clearTimeout(timer);
+    document.removeEventListener("visibilitychange", settleIfHidden);
+    window.removeEventListener("pagehide", settle);
+    window.removeEventListener("blur", settle);
+    window.clearTimeout(timer);
   };
 
-  const runNext = () => {
-    if (cancelled) return;
-    if (opened || document.visibilityState === "hidden") { cleanup(); return; }
-    if (index >= steps.length) { cleanup(); handlers.onExhausted(); return; }
-    const step = steps[index];
-    index += 1;
-    handlers.onStep?.(step.label, index, steps.length);
-    openUrl(step.url);
-    timer = window.setTimeout(runNext, step.waitMs);
-  };
+  // Synchronous, in-gesture navigation.
+  window.location.href = url;
 
-  document.addEventListener("visibilitychange", markOpenedIfHidden);
-  window.addEventListener("pagehide", markOpened);
-  window.addEventListener("blur", markOpened);
-  runNext();
+  const timer = window.setTimeout(() => {
+    cleanup();
+    if (!settled && document.visibilityState === "visible") onProbablyFailed();
+  }, 2500);
 
   return cleanup;
 };

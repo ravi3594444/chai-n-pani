@@ -1,20 +1,20 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
+  UPI_APPS,
   UPI_ID,
   UPI_PAYEE_NAME,
   createUpiQuery,
-  createUpiUrl,
+  type UpiApp,
 } from "../payment-config";
-import { buildUpiLaunchSteps, launchUpiSequence } from "../upi-launch";
+import { buildUpiAppUrl, buildUpiChooserUrl, launchUpi } from "../upi-launch";
 
 function UpiPaymentContent() {
   const query = useSearchParams();
   const [status, setStatus] = useState("");
   const [copied, setCopied] = useState(false);
-  const cancelRef = useRef<(() => void) | null>(null);
 
   const details = useMemo(() => {
     const amountNumber = Number(query.get("amount"));
@@ -26,26 +26,26 @@ function UpiPaymentContent() {
     };
   }, [query]);
 
-  const upiQuery = useMemo(
-    () => createUpiQuery(details.amount, details.orderId),
-    [details.amount, details.orderId],
-  );
-  // A plain upi:// href, not an intent - a real tap here must never reach the Play Store.
-  const chooserUrl = createUpiUrl(upiQuery);
+  const attemptRef = useRef(0);
 
-  useEffect(() => () => cancelRef.current?.(), []);
+  const nextQuery = useCallback(() => {
+    attemptRef.current += 1;
+    return createUpiQuery(details.amount, details.orderId, attemptRef.current + 1);
+  }, [details.amount, details.orderId]);
 
-  const retrySelectedApp = useCallback(() => {
-    cancelRef.current?.();
+  const retryApp = useCallback((app: UpiApp) => {
+    setStatus(`Opening ${app.name}…`);
+    launchUpi(buildUpiAppUrl(app, nextQuery(), window.location.href), () =>
+      setStatus(`${app.name} still did not open. Pay ${UPI_ID} by hand from inside any UPI app.`),
+    );
+  }, [nextQuery]);
+
+  const retryAny = useCallback(() => {
     setStatus("Opening your UPI app…");
-    cancelRef.current = launchUpiSequence(buildUpiLaunchSteps(upiQuery, window.location.href), {
-      onStep: (label) => setStatus(label),
-      onExhausted: () => {
-        cancelRef.current = null;
-        setStatus(`No UPI app responded. Scan the QR on the order page, or pay ${UPI_ID} by hand from inside your app.`);
-      },
-    });
-  }, [upiQuery]);
+    launchUpi(buildUpiChooserUrl(nextQuery(), window.location.href), () =>
+      setStatus(`No UPI app opened. Pay ${UPI_ID} by hand from inside any UPI app.`),
+    );
+  }, [nextQuery]);
 
   const copyUpiId = useCallback(async () => {
     try {
@@ -74,10 +74,16 @@ function UpiPaymentContent() {
           <span>Order</span><strong>{details.orderId}</strong>
         </div>
 
-        <button className="upi-fallback-primary" type="button" onClick={retrySelectedApp}>
-          Try again · ₹ {details.amount}
-        </button>
-        <a className="upi-fallback-any" href={chooserUrl}>Open any UPI app</a>
+        <div className="upi-app-grid" aria-label="Choose a UPI payment app">
+          {UPI_APPS.map((app) => (
+            <button className={`upi-app-button upi-${app.id}`} type="button" onClick={() => retryApp(app)} key={app.id}>
+              <span className="upi-app-logo-wrap"><img className="upi-app-logo" src={app.logo} alt={`${app.name} logo`} /></span>
+              <span className="upi-app-copy"><strong>Open {app.name}</strong><small>₹ {details.amount} prefilled</small></span>
+              <span className="upi-app-arrow" aria-hidden="true">→</span>
+            </button>
+          ))}
+        </div>
+        <button className="upi-fallback-any" type="button" onClick={retryAny}>Open any UPI app</button>
         <button className="upi-fallback-back" type="button" onClick={copyUpiId}>
           {copied ? "UPI ID copied ✓" : "Copy UPI ID instead"}
         </button>

@@ -6,9 +6,14 @@ import {
   UPI_APPS,
   UPI_ID,
   createUpiQuery,
-  createUpiUrl,
+  type UpiApp,
 } from "./payment-config";
-import { buildUpiLaunchSteps, launchUpiSequence } from "./upi-launch";
+import {
+  buildUpiAppUrl,
+  buildUpiChooserUrl,
+  isInAppBrowser,
+  launchUpi,
+} from "./upi-launch";
 
 type CartLine = {
   item: ClientMenuItem;
@@ -64,17 +69,14 @@ export default function Home() {
   const [orderId, setOrderId] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [upiLaunchStatus, setUpiLaunchStatus] = useState("");
-  const cancelUpiLaunchRef = useRef<(() => void) | null>(null);
+  const upiAttemptRef = useRef(0);
 
   useEffect(() => {
     const clearStatus = () => {
       if (document.visibilityState === "visible") setUpiLaunchStatus("");
     };
     document.addEventListener("visibilitychange", clearStatus);
-    return () => {
-      document.removeEventListener("visibilitychange", clearStatus);
-      cancelUpiLaunchRef.current?.();
-    };
+    return () => document.removeEventListener("visibilitychange", clearStatus);
   }, []);
   const [proofReady, setProofReady] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
@@ -93,8 +95,6 @@ export default function Home() {
   const basketTotal = basket.reduce((sum, line) => sum + Number(line.item.price) * line.quantity, 0);
   const focusedQuantity = focused ? basket.find((line) => cartKey(line.item) === cartKey(focused))?.quantity ?? 0 : 0;
   const paymentOrderId = orderId || "CHAI-N-PANI";
-  const upiQuery = createUpiQuery(basketTotal.toFixed(2), paymentOrderId);
-  const upiUrl = createUpiUrl(upiQuery);
   const locationPreviewUrl = deliveryLocation
     ? `https://maps.google.com/maps?q=${deliveryLocation.latitude},${deliveryLocation.longitude}&z=17&output=embed`
     : "";
@@ -243,27 +243,32 @@ export default function Home() {
     setLocationMessage("GPS pin removed. The restaurant will use your written address.");
   };
 
-  const openUpiApp = () => {
-    cancelUpiLaunchRef.current?.();
+  const upiFallbackUrl = () => {
+    const params = new URLSearchParams({ amount: basketTotal.toFixed(2), order: paymentOrderId });
+    return `${window.location.origin}/upi-payment?${params.toString()}`;
+  };
 
-    const fallbackQuery = new URLSearchParams({
-      amount: basketTotal.toFixed(2),
-      order: paymentOrderId,
-    });
-    const fallbackUrl = `${window.location.origin}/upi-payment?${fallbackQuery.toString()}`;
+  // Must stay synchronous: Chrome consumes the tap's user activation on the
+  // first navigation, so nothing may be awaited before window.location is set.
+  const openUpiApp = (app: UpiApp) => {
+    const attempt = upiAttemptRef.current + 1;
+    upiAttemptRef.current = attempt;
+    const query = createUpiQuery(basketTotal.toFixed(2), paymentOrderId, attempt);
+    setUpiLaunchStatus(`Opening ${app.name}…`);
+    launchUpi(buildUpiAppUrl(app, query, upiFallbackUrl()), () =>
+      setUpiLaunchStatus(
+        `${app.name} did not open. Try another app below, or scan the QR / pay ${UPI_ID} by hand.`,
+      ),
+    );
+  };
 
+  const openAnyUpiApp = () => {
+    const attempt = upiAttemptRef.current + 1;
+    upiAttemptRef.current = attempt;
+    const query = createUpiQuery(basketTotal.toFixed(2), paymentOrderId, attempt);
     setUpiLaunchStatus("Opening your UPI app…");
-
-    cancelUpiLaunchRef.current = launchUpiSequence(
-      buildUpiLaunchSteps(upiQuery, fallbackUrl),
-      {
-        onStep: (label) => setUpiLaunchStatus(label),
-        onExhausted: () => {
-          setUpiLaunchStatus("");
-          cancelUpiLaunchRef.current = null;
-          window.location.assign(fallbackUrl);
-        },
-      },
+    launchUpi(buildUpiChooserUrl(query, upiFallbackUrl()), () =>
+      setUpiLaunchStatus(`No UPI app opened. Scan the QR below, or pay ${UPI_ID} by hand.`),
     );
   };
 
@@ -554,19 +559,26 @@ export default function Home() {
                   <span>Payee UPI</span><strong>{UPI_ID}</strong>
                 </div>
 
-                <button className="upi-pay-button" type="button" onClick={openUpiApp}>
-                  <strong>Pay ₹ {basketTotal} with UPI</strong>
-                  <small>Your phone will ask which app to use</small>
-                </button>
-                <div className="upi-app-logos" aria-hidden="true">
+                {isInAppBrowser() && (
+                  <p className="upi-launch-status">
+                    You’re in an in-app browser, which can’t open payment apps. Tap ⋯ and choose “Open in
+                    Chrome”, or scan the QR below.
+                  </p>
+                )}
+                <div className="upi-app-grid" aria-label="Choose a UPI payment app">
                   {UPI_APPS.map((app) => (
-                    <span className="upi-app-logo-wrap" key={app.id}>
-                      <img className="upi-app-logo" src={app.logo} alt="" loading="lazy" decoding="async" />
-                    </span>
+                    <button className={`upi-app-button upi-${app.id}`} type="button" onClick={() => openUpiApp(app)} key={app.id}>
+                      <span className="upi-app-logo-wrap"><img className="upi-app-logo" src={app.logo} alt={`${app.name} logo`} loading="lazy" decoding="async" /></span>
+                      <span className="upi-app-copy"><strong>Pay with {app.name}</strong><small>₹ {basketTotal} will be prefilled</small></span>
+                      <span className="upi-app-arrow" aria-hidden="true">→</span>
+                    </button>
                   ))}
                 </div>
+                <button className="upi-any-button" type="button" onClick={openAnyUpiApp}>
+                  Use any other UPI app · ₹ {basketTotal}
+                </button>
                 {upiLaunchStatus && <p className="upi-launch-status" aria-live="polite">{upiLaunchStatus}</p>}
-                <p className="payment-footnote">Android picks from the UPI apps you already have installed — Google Pay, PhonePe, Paytm or any bank app — with the amount, payee and order reference prefilled. If nothing opens, scan the QR below or pay {UPI_ID} by hand.</p>
+                <p className="payment-footnote">Each button opens that app directly with the amount, payee and order reference already filled in. If the app isn’t installed you’ll land on a retry page — never the Play Store. Scanning the QR works from any UPI app.</p>
 
                 <div className="payment-divider"><span>or scan to pay</span></div>
                 <div className="qr-payment-card">

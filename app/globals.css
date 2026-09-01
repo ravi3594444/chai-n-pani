@@ -339,3 +339,5 @@ img { display: block; }
 .upi-pay-button strong { font-size: 13px; font-weight: 900; }
 .upi-pay-button small { font-size: 10px; opacity: .85; }
 .upi-app-logos { margin-top: 12px; display: flex; gap: 8px; justify-content: center; }
+
+.upi-any-button { width: 100%; cursor: pointer; }

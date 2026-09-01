@@ -1,22 +1,28 @@
 export const UPI_ID = "Q698500876@ybl";
 export const UPI_PAYEE_NAME = "Chai N Pani";
 
-/** Logos only. These are NOT launch targets - see createUpiChooserIntentUrl. */
 export const UPI_APPS = [
   {
     id: "gpay",
     name: "Google Pay",
     logo: "/payment/google-pay-mark.svg",
+    packageName: "com.google.android.apps.nbu.paisa.user",
+    // tez:// is the scheme Google documents for India; gpay:// is the newer alias.
+    iosScheme: "tez://upi/pay",
   },
   {
     id: "phonepe",
     name: "PhonePe",
     logo: "/payment/phonepe-logo.svg",
+    packageName: "com.phonepe.app",
+    iosScheme: "phonepe://pay",
   },
   {
     id: "paytm",
     name: "Paytm",
     logo: "/payment/paytm-logo.png",
+    packageName: "net.one97.paytm",
+    iosScheme: "paytmmp://pay",
   },
 ] as const;
 
@@ -26,10 +32,10 @@ export const findUpiApp = (id: string | null | undefined): UpiApp =>
   UPI_APPS.find((app) => app.id === id) || UPI_APPS[0];
 
 /**
- * UPI deep links must be percent-encoded (%20 for spaces).
- * URLSearchParams.toString() emits `+` for spaces, which PhonePe and several
- * bank apps parse literally — the app then opens with a mangled payee/note, or
- * rejects the intent outright and hands control straight back to the browser.
+ * Percent-encoding, not URLSearchParams. URLSearchParams emits `+` for spaces;
+ * UPI needs `%20`. A stray unencoded space or `&` silently truncates every
+ * parameter after it, and the apps report that as a misleading "limit exceeded"
+ * dialog rather than a parse error.
  */
 const encodeUpiParams = (params: Record<string, string>) =>
   Object.entries(params)
@@ -37,39 +43,45 @@ const encodeUpiParams = (params: Record<string, string>) =>
     .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
     .join("&");
 
-export const createUpiQuery = (amount: string, orderId: string) =>
+/**
+ * `attempt` keeps `tr` unique per launch. Reusing a transaction reference across
+ * retries causes reconciliation failures and duplicate-payment handling in the
+ * PSP. The human-readable order id stays in `tn` so the kitchen can still match it.
+ */
+export const createUpiQuery = (amount: string, orderId: string, attempt = 1) =>
   encodeUpiParams({
     pa: UPI_ID,
     pn: UPI_PAYEE_NAME,
-    am: amount,
+    // Two decimals: some bank apps reject a bare integer amount.
+    am: Number(amount).toFixed(2),
     cu: "INR",
     tn: `Chai N Pani order ${orderId}`,
-    tr: orderId,
+    tr: attempt > 1 ? `${orderId}R${attempt}` : orderId,
   });
 
 export const createUpiUrl = (query: string) => `upi://pay?${query}`;
 
-const buildIntentUrl = (query: string, extras: string) =>
-  `intent://pay?${query}#Intent;scheme=upi;action=android.intent.action.VIEW;` +
-  `category=android.intent.category.BROWSABLE;${extras}end`;
+/** iOS has no intent://; the app's own scheme is the only route. */
+export const createIosUpiUrl = (app: UpiApp, query: string) => `${app.iosScheme}?${query}`;
 
 /**
- * Unpinned intent plus a mandatory browser fallback.
+ * Android intent, pinned to one app.
  *
- * Two hard rules learned the painful way:
+ * Deliberately omits `action=` and `category=`. Chrome supplies VIEW and adds
+ * BROWSABLE to the resolution query itself; specifying them by hand narrows the
+ * match and can make resolution fail against an app that would otherwise match.
+ * An earlier version of this file set both, which is part of why nothing opened.
  *
- * 1. NEVER emit `package=` from a web page. Chrome cannot resolve a UPI app's
- *    payment activity, because those activities are registered for app-to-app
- *    invocation with category DEFAULT only - they do not declare BROWSABLE, and
- *    Chrome force-adds BROWSABLE to every intent:// it launches. Resolution
- *    fails even when the app is installed.
- * 2. ALWAYS pass fallbackUrl. When `package=` is set and resolution fails with
- *    no fallback, Chrome's documented behaviour is to open the Play Store
- *    listing for that package. That combination is exactly how an installed
- *    Google Pay ended up showing its own Play Store page.
- *
- * Leaving the package off means Android picks from the apps actually installed,
- * and the fallback means a miss lands on our own retry page, never the store.
+ * `S.browser_fallback_url` is mandatory. Without it, a pinned `package=` that
+ * fails to resolve sends the user to that package's Play Store listing — which
+ * is exactly the "download the app I already have" bug. Chrome strips this extra
+ * before handing the intent to the app, so the app never sees it.
  */
+export const createAndroidUpiIntentUrl = (app: UpiApp, query: string, fallbackUrl: string) =>
+  `intent://pay?${query}#Intent;scheme=upi;package=${app.packageName};` +
+  `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
+
+/** Unpinned: Android offers whichever UPI apps are installed. */
 export const createUpiChooserIntentUrl = (query: string, fallbackUrl: string) =>
-  buildIntentUrl(query, `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};`);
+  `intent://pay?${query}#Intent;scheme=upi;` +
+  `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
