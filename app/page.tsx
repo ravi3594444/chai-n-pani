@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clientCategories, type ClientMenuItem } from "./menu-data";
 import {
   UPI_APPS,
   UPI_ID,
-  createAndroidUpiIntentUrl,
   createUpiQuery,
   createUpiUrl,
   type UpiApp,
 } from "./payment-config";
+import { buildUpiLaunchSteps, launchUpiSequence } from "./upi-launch";
 
 type CartLine = {
   item: ClientMenuItem;
@@ -64,6 +64,19 @@ export default function Home() {
   const [locationMessage, setLocationMessage] = useState("");
   const [orderId, setOrderId] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [upiLaunchStatus, setUpiLaunchStatus] = useState("");
+  const cancelUpiLaunchRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const clearStatus = () => {
+      if (document.visibilityState === "visible") setUpiLaunchStatus("");
+    };
+    document.addEventListener("visibilitychange", clearStatus);
+    return () => {
+      document.removeEventListener("visibilitychange", clearStatus);
+      cancelUpiLaunchRef.current?.();
+    };
+  }, []);
   const [proofReady, setProofReady] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [addressLookupUsed, setAddressLookupUsed] = useState(false);
@@ -232,6 +245,8 @@ export default function Home() {
   };
 
   const openUpiApp = (app: UpiApp) => {
+    cancelUpiLaunchRef.current?.();
+
     const fallbackQuery = new URLSearchParams({
       app: app.id,
       amount: basketTotal.toFixed(2),
@@ -239,12 +254,19 @@ export default function Home() {
     });
     const fallbackUrl = `${window.location.origin}/upi-payment?${fallbackQuery.toString()}`;
 
-    if (!/Android/i.test(navigator.userAgent)) {
-      window.location.assign(fallbackUrl);
-      return;
-    }
+    setUpiLaunchStatus(`Opening ${app.name}…`);
 
-    window.location.assign(createAndroidUpiIntentUrl(app, upiQuery, fallbackUrl));
+    cancelUpiLaunchRef.current = launchUpiSequence(
+      buildUpiLaunchSteps(app, upiQuery),
+      {
+        onStep: (label) => setUpiLaunchStatus(label),
+        onExhausted: () => {
+          setUpiLaunchStatus("");
+          cancelUpiLaunchRef.current = null;
+          window.location.assign(fallbackUrl);
+        },
+      },
+    );
   };
 
   const updatePhone = (value: string) => {
@@ -543,8 +565,9 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                {upiLaunchStatus && <p className="upi-launch-status" aria-live="polite">{upiLaunchStatus}</p>}
                 <a className="upi-any-button" href={upiUrl}>Use any other UPI app · ₹ {basketTotal}</a>
-                <p className="payment-footnote">Each branded button targets only the selected Android app with the amount, payee and order reference prefilled. If your browser blocks direct app opening, a retry page appears instead of silently opening a different bank app. “Any other UPI app” remains a separate option.</p>
+                <p className="payment-footnote">Each branded button targets the selected app first, then that app’s own link, then your phone’s UPI chooser. The amount, payee and order reference stay prefilled throughout, and the retry page only appears if every attempt fails.</p>
 
                 <div className="payment-divider"><span>or scan to pay</span></div>
                 <div className="qr-payment-card">

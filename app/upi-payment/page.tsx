@@ -1,25 +1,24 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  UPI_APPS,
   UPI_ID,
   UPI_PAYEE_NAME,
-  createAndroidUpiIntentUrl,
+  createUpiChooserIntentUrl,
   createUpiQuery,
   createUpiUrl,
+  findUpiApp,
 } from "../payment-config";
-
-type PaymentFallbackDetails = {
-  appId: string;
-  amount: string;
-  orderId: string;
-};
+import { buildUpiLaunchSteps, isAndroid, launchUpiSequence } from "../upi-launch";
 
 function UpiPaymentContent() {
   const query = useSearchParams();
-  const details = useMemo<PaymentFallbackDetails>(() => {
+  const [status, setStatus] = useState("");
+  const [copied, setCopied] = useState(false);
+  const cancelRef = useRef<(() => void) | null>(null);
+
+  const details = useMemo(() => {
     const amountNumber = Number(query.get("amount"));
     const orderId = (query.get("order") || "CHAI-N-PANI").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 50);
     return {
@@ -29,14 +28,38 @@ function UpiPaymentContent() {
     };
   }, [query]);
 
-  const selectedApp = UPI_APPS.find((app) => app.id === details.appId) || UPI_APPS[0];
-  const paymentLinks = useMemo(() => {
-    const query = createUpiQuery(details.amount, details.orderId);
-    return {
-      anyUpiApp: createUpiUrl(query),
-      selectedAndroidApp: createAndroidUpiIntentUrl(selectedApp, query),
-    };
-  }, [details, selectedApp]);
+  const selectedApp = findUpiApp(details.appId);
+  const upiQuery = useMemo(
+    () => createUpiQuery(details.amount, details.orderId),
+    [details.amount, details.orderId],
+  );
+  const chooserUrl = isAndroid() ? createUpiChooserIntentUrl(upiQuery) : createUpiUrl(upiQuery);
+
+  useEffect(() => () => cancelRef.current?.(), []);
+
+  const retrySelectedApp = useCallback(() => {
+    cancelRef.current?.();
+    setStatus(`Opening ${selectedApp.name}…`);
+    cancelRef.current = launchUpiSequence(buildUpiLaunchSteps(selectedApp, upiQuery), {
+      onStep: (label) => setStatus(label),
+      onExhausted: () => {
+        cancelRef.current = null;
+        setStatus(
+          `${selectedApp.name} did not respond. Use the UPI chooser below, or pay ${UPI_ID} manually from inside the app.`,
+        );
+      },
+    });
+  }, [selectedApp, upiQuery]);
+
+  const copyUpiId = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(UPI_ID);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setStatus(`Copy failed. The UPI ID is ${UPI_ID}.`);
+    }
+  }, []);
 
   return (
     <main className="upi-fallback-page">
@@ -44,19 +67,40 @@ function UpiPaymentContent() {
         <p className="eyebrow">Chai N Pani · UPI payment</p>
         <div className="upi-fallback-logo"><img src={selectedApp.logo} alt={`${selectedApp.name} logo`} /></div>
         <h1>Open your payment app</h1>
-        <p className="upi-fallback-copy">Your browser did not open {selectedApp.name} on the first attempt. Retry the selected app below. This button targets {selectedApp.name} only and will not intentionally open another bank app.</p>
+        <p className="upi-fallback-copy">
+          Your browser blocked every automatic attempt to hand this payment to {selectedApp.name}. Nothing has been
+          charged. Retry below, or open any UPI app — the amount and payee are prefilled either way.
+        </p>
 
         <div className="upi-fallback-summary">
-          <span>Amount</span><strong>₹ {details?.amount || "—"}</strong>
+          <span>Amount</span><strong>₹ {details.amount}</strong>
           <span>Payee</span><strong>{UPI_PAYEE_NAME}</strong>
           <span>UPI ID</span><strong>{UPI_ID}</strong>
-          <span>Order</span><strong>{details?.orderId || "—"}</strong>
+          <span>Order</span><strong>{details.orderId}</strong>
         </div>
 
-        <a className="upi-fallback-primary" href={paymentLinks.selectedAndroidApp}>Try {selectedApp.name} again · ₹ {details.amount}</a>
-        <a className="upi-fallback-any" href={paymentLinks.anyUpiApp}>Use any UPI app instead</a>
-        <button className="upi-fallback-back" type="button" onClick={() => window.history.length > 1 ? window.history.back() : window.location.assign("/")}>Back to my order</button>
-        <p className="upi-fallback-note">If the selected app still does not open, open this page in Chrome or scan the QR from another phone. The amount and payee remain prefilled. Return to the order after payment to send the UTR and screenshot on WhatsApp.</p>
+        <button className="upi-fallback-primary" type="button" onClick={retrySelectedApp}>
+          Try {selectedApp.name} again · ₹ {details.amount}
+        </button>
+        <a className="upi-fallback-any" href={chooserUrl}>Open my UPI app chooser</a>
+        <button className="upi-fallback-back" type="button" onClick={copyUpiId}>
+          {copied ? "UPI ID copied ✓" : "Copy UPI ID instead"}
+        </button>
+        <button
+          className="upi-fallback-back"
+          type="button"
+          onClick={() => (window.history.length > 1 ? window.history.back() : window.location.assign("/"))}
+        >
+          Back to my order
+        </button>
+
+        {status && <p className="upi-launch-status" aria-live="polite">{status}</p>}
+
+        <p className="upi-fallback-note">
+          Still stuck? Open Chrome directly (in-app browsers inside WhatsApp or Instagram cannot launch UPI apps), or
+          scan the QR on the order page from another phone. Return to the order afterwards to send the UTR and
+          screenshot on WhatsApp.
+        </p>
       </section>
     </main>
   );

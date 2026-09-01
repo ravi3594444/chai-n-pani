@@ -332,3 +332,5 @@ img { display: block; }
 @keyframes sheetUp { from { transform: translateY(30px); opacity: .5; } to { transform: none; opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.upi-launch-status { margin: 10px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--bone); color: var(--muted); text-align: center; font-size: 11px; line-height: 1.5; }
