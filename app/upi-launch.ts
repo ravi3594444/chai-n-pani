@@ -1,25 +1,11 @@
 "use client";
 
-import {
-  createAndroidUpiIntentUrl,
-  createUpiAppSchemeUrls,
-  createUpiChooserIntentUrl,
-  createUpiUrl,
-  type UpiApp,
-} from "./payment-config";
+import { createUpiChooserIntentUrl, createUpiUrl } from "./payment-config";
 
 export type LaunchStep = { url: string; waitMs: number; label: string };
 
-type NavigatorWithUaData = Navigator & {
-  userAgentData?: { platform?: string; mobile?: boolean };
-};
+type NavigatorWithUaData = Navigator & { userAgentData?: { platform?: string } };
 
-/**
- * Desktop-site mode and several in-app WebViews strip "Android" from the UA
- * string, so a plain userAgent test used to send real Android users straight to
- * the retry page. Check the UA client hint first and never hard-gate on this —
- * a wrong answer only changes the order of attempts, not whether we try.
- */
 export const isAndroid = (): boolean => {
   if (typeof navigator === "undefined") return false;
   const uaData = (navigator as NavigatorWithUaData).userAgentData;
@@ -42,32 +28,20 @@ const openUrl = (url: string) => {
 };
 
 /**
- * Ordered attempts, cheapest-to-fail first. Each one is independent: if the
- * pinned package will not resolve we move on instead of surrendering.
+ * Android: one unpinned chooser intent, carrying a browser fallback so a miss
+ * lands on our retry page rather than the Play Store.
+ * Everywhere else (iOS, in-app WebViews, desktop): the bare upi:// scheme, which
+ * is all those environments understand.
  */
-export const buildUpiLaunchSteps = (app: UpiApp, query: string): LaunchStep[] => {
-  const android = isAndroid();
-  const steps: LaunchStep[] = [];
-
-  if (android) {
-    steps.push({
-      url: createAndroidUpiIntentUrl(app, query),
-      waitMs: 1300,
-      label: `Opening ${app.name}…`,
-    });
+export const buildUpiLaunchSteps = (query: string, fallbackUrl: string): LaunchStep[] => {
+  const label = "Opening your UPI app…";
+  if (isAndroid()) {
+    return [
+      { url: createUpiChooserIntentUrl(query, fallbackUrl), waitMs: 1800, label },
+      { url: createUpiUrl(query), waitMs: 1500, label },
+    ];
   }
-
-  for (const url of createUpiAppSchemeUrls(app, query)) {
-    steps.push({ url, waitMs: 900, label: `Opening ${app.name}…` });
-  }
-
-  steps.push({
-    url: android ? createUpiChooserIntentUrl(query) : createUpiUrl(query),
-    waitMs: 1600,
-    label: "Opening your UPI app…",
-  });
-
-  return steps;
+  return [{ url: createUpiUrl(query), waitMs: 1800, label }];
 };
 
 export type LaunchHandlers = {
@@ -75,10 +49,6 @@ export type LaunchHandlers = {
   onExhausted: () => void;
 };
 
-/**
- * Runs the steps until the page is backgrounded (which means an app took over)
- * or the list runs out. Returns a cancel function.
- */
 export const launchUpiSequence = (
   steps: LaunchStep[],
   handlers: LaunchHandlers,
@@ -88,9 +58,7 @@ export const launchUpiSequence = (
   let cancelled = false;
   let timer: number | undefined;
 
-  const markOpened = () => {
-    opened = true;
-  };
+  const markOpened = () => { opened = true; };
   const markOpenedIfHidden = () => {
     if (document.visibilityState === "hidden" || document.hidden) opened = true;
   };
@@ -105,15 +73,8 @@ export const launchUpiSequence = (
 
   const runNext = () => {
     if (cancelled) return;
-    if (opened || document.visibilityState === "hidden") {
-      cleanup();
-      return;
-    }
-    if (index >= steps.length) {
-      cleanup();
-      handlers.onExhausted();
-      return;
-    }
+    if (opened || document.visibilityState === "hidden") { cleanup(); return; }
+    if (index >= steps.length) { cleanup(); handlers.onExhausted(); return; }
     const step = steps[index];
     index += 1;
     handlers.onStep?.(step.label, index, steps.length);

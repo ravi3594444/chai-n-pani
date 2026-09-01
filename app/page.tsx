@@ -7,7 +7,6 @@ import {
   UPI_ID,
   createUpiQuery,
   createUpiUrl,
-  type UpiApp,
 } from "./payment-config";
 import { buildUpiLaunchSteps, launchUpiSequence } from "./upi-launch";
 
@@ -244,20 +243,19 @@ export default function Home() {
     setLocationMessage("GPS pin removed. The restaurant will use your written address.");
   };
 
-  const openUpiApp = (app: UpiApp) => {
+  const openUpiApp = () => {
     cancelUpiLaunchRef.current?.();
 
     const fallbackQuery = new URLSearchParams({
-      app: app.id,
       amount: basketTotal.toFixed(2),
       order: paymentOrderId,
     });
     const fallbackUrl = `${window.location.origin}/upi-payment?${fallbackQuery.toString()}`;
 
-    setUpiLaunchStatus(`Opening ${app.name}…`);
+    setUpiLaunchStatus("Opening your UPI app…");
 
     cancelUpiLaunchRef.current = launchUpiSequence(
-      buildUpiLaunchSteps(app, upiQuery),
+      buildUpiLaunchSteps(upiQuery, fallbackUrl),
       {
         onStep: (label) => setUpiLaunchStatus(label),
         onExhausted: () => {
@@ -347,7 +345,7 @@ export default function Home() {
           <section className="category-grid" aria-label="Menu categories">
             {clientCategories.map((category, index) => (
               <button className={`category-card category-card-${index + 1}`} key={category.id} onClick={() => chooseCategory(category.id)}>
-                <img src={category.cover} alt="" /><span className="category-overlay" />
+                <img src={category.cover} alt="" loading="lazy" decoding="async" fetchPriority="low" /><span className="category-overlay" />
                 <span className="category-content">
                   <span className="category-number">0{index + 1}</span>
                   <span><span className="category-eyebrow">{category.eyebrow}</span><strong>{category.name}</strong><small>{category.description}</small></span>
@@ -389,7 +387,7 @@ export default function Home() {
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setFocused(null)}>
           <section className="item-modal" role="dialog" aria-modal="true" aria-labelledby="item-modal-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={() => setFocused(null)} aria-label="Close item details">×</button>
-            <div className="modal-image">{focused.image ? <img src={focused.image} alt={focused.name} /> : <div className="photo-placeholder" role="img" aria-label={`${focused.name} photo coming soon`}><span>Owner photo</span><strong>Coming soon</strong></div>}{focused.tag && <span className="item-tag">{focused.tag}</span>}</div>
+            <div className="modal-image">{focused.image ? <img src={focused.image} alt={focused.name} decoding="async" /> : <div className="photo-placeholder" role="img" aria-label={`${focused.name} photo coming soon`}><span>Owner photo</span><strong>Coming soon</strong></div>}{focused.tag && <span className="item-tag">{focused.tag}</span>}</div>
             <div className="modal-copy">
               <p className="eyebrow">Chai N Pani selection</p>
               <h2 id="item-modal-title">{focused.name}</h2>
@@ -443,7 +441,7 @@ export default function Home() {
                       <div className="order-item" key={key}>
                         <div className="order-item-main">
                           <div className="order-item-image">
-                            {item.image ? <img src={item.image} alt="" /> : <span>{item.name.charAt(0)}</span>}
+                            {item.image ? <img src={item.image} alt="" loading="lazy" decoding="async" /> : <span>{item.name.charAt(0)}</span>}
                           </div>
                           <div className="order-item-copy">
                             <span className="order-item-name">{item.name}</span>
@@ -556,22 +554,23 @@ export default function Home() {
                   <span>Payee UPI</span><strong>{UPI_ID}</strong>
                 </div>
 
-                <div className="upi-app-grid" aria-label="Choose a UPI payment app">
+                <button className="upi-pay-button" type="button" onClick={openUpiApp}>
+                  <strong>Pay ₹ {basketTotal} with UPI</strong>
+                  <small>Your phone will ask which app to use</small>
+                </button>
+                <div className="upi-app-logos" aria-hidden="true">
                   {UPI_APPS.map((app) => (
-                    <button className={`upi-app-button upi-${app.id}`} type="button" onClick={() => openUpiApp(app)} key={app.id}>
-                      <span className="upi-app-logo-wrap"><img className="upi-app-logo" src={app.logo} alt={`${app.name} logo`} /></span>
-                      <span className="upi-app-copy"><strong>Pay with {app.name}</strong><small>₹ {basketTotal} will be prefilled</small></span>
-                      <span className="upi-app-arrow" aria-hidden="true">→</span>
-                    </button>
+                    <span className="upi-app-logo-wrap" key={app.id}>
+                      <img className="upi-app-logo" src={app.logo} alt="" loading="lazy" decoding="async" />
+                    </span>
                   ))}
                 </div>
                 {upiLaunchStatus && <p className="upi-launch-status" aria-live="polite">{upiLaunchStatus}</p>}
-                <a className="upi-any-button" href={upiUrl}>Use any other UPI app · ₹ {basketTotal}</a>
-                <p className="payment-footnote">Each branded button targets the selected app first, then that app’s own link, then your phone’s UPI chooser. The amount, payee and order reference stay prefilled throughout, and the retry page only appears if every attempt fails.</p>
+                <p className="payment-footnote">Android picks from the UPI apps you already have installed — Google Pay, PhonePe, Paytm or any bank app — with the amount, payee and order reference prefilled. If nothing opens, scan the QR below or pay {UPI_ID} by hand.</p>
 
                 <div className="payment-divider"><span>or scan to pay</span></div>
                 <div className="qr-payment-card">
-                  <img src="/payment/chai-n-pani-upi-qr.png" alt={`UPI QR code for ${UPI_ID}`} />
+                  <img src="/payment/chai-n-pani-upi-qr.png" alt={`UPI QR code for ${UPI_ID}`} width={320} height={334} loading="lazy" decoding="async" />
                   <div>
                     <strong>Scan with any UPI app</strong>
                     <span>Enter exactly ₹ {basketTotal}</span>

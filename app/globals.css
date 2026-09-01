@@ -334,3 +334,8 @@ img { display: block; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
 .upi-launch-status { margin: 10px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--bone); color: var(--muted); text-align: center; font-size: 11px; line-height: 1.5; }
+
+.upi-pay-button { width: 100%; min-height: 62px; padding: 12px; border: 0; border-radius: 999px; display: grid; gap: 3px; place-items: center; background: var(--rust); color: #fff; cursor: pointer; box-shadow: 0 14px 30px rgba(183,73,45,.2); }
+.upi-pay-button strong { font-size: 13px; font-weight: 900; }
+.upi-pay-button small { font-size: 10px; opacity: .85; }
+.upi-app-logos { margin-top: 12px; display: flex; gap: 8px; justify-content: center; }

@@ -5,12 +5,10 @@ import { useSearchParams } from "next/navigation";
 import {
   UPI_ID,
   UPI_PAYEE_NAME,
-  createUpiChooserIntentUrl,
   createUpiQuery,
   createUpiUrl,
-  findUpiApp,
 } from "../payment-config";
-import { buildUpiLaunchSteps, isAndroid, launchUpiSequence } from "../upi-launch";
+import { buildUpiLaunchSteps, launchUpiSequence } from "../upi-launch";
 
 function UpiPaymentContent() {
   const query = useSearchParams();
@@ -28,28 +26,26 @@ function UpiPaymentContent() {
     };
   }, [query]);
 
-  const selectedApp = findUpiApp(details.appId);
   const upiQuery = useMemo(
     () => createUpiQuery(details.amount, details.orderId),
     [details.amount, details.orderId],
   );
-  const chooserUrl = isAndroid() ? createUpiChooserIntentUrl(upiQuery) : createUpiUrl(upiQuery);
+  // A plain upi:// href, not an intent - a real tap here must never reach the Play Store.
+  const chooserUrl = createUpiUrl(upiQuery);
 
   useEffect(() => () => cancelRef.current?.(), []);
 
   const retrySelectedApp = useCallback(() => {
     cancelRef.current?.();
-    setStatus(`Opening ${selectedApp.name}…`);
-    cancelRef.current = launchUpiSequence(buildUpiLaunchSteps(selectedApp, upiQuery), {
+    setStatus("Opening your UPI app…");
+    cancelRef.current = launchUpiSequence(buildUpiLaunchSteps(upiQuery, window.location.href), {
       onStep: (label) => setStatus(label),
       onExhausted: () => {
         cancelRef.current = null;
-        setStatus(
-          `${selectedApp.name} did not respond. Use the UPI chooser below, or pay ${UPI_ID} manually from inside the app.`,
-        );
+        setStatus(`No UPI app responded. Scan the QR on the order page, or pay ${UPI_ID} by hand from inside your app.`);
       },
     });
-  }, [selectedApp, upiQuery]);
+  }, [upiQuery]);
 
   const copyUpiId = useCallback(async () => {
     try {
@@ -65,11 +61,10 @@ function UpiPaymentContent() {
     <main className="upi-fallback-page">
       <section className="upi-fallback-card">
         <p className="eyebrow">Chai N Pani · UPI payment</p>
-        <div className="upi-fallback-logo"><img src={selectedApp.logo} alt={`${selectedApp.name} logo`} /></div>
         <h1>Open your payment app</h1>
         <p className="upi-fallback-copy">
-          Your browser blocked every automatic attempt to hand this payment to {selectedApp.name}. Nothing has been
-          charged. Retry below, or open any UPI app — the amount and payee are prefilled either way.
+          Your browser could not hand this payment to a UPI app. Nothing has been charged. Retry below, or just pay the
+          UPI ID by hand — the amount and payee are the same either way.
         </p>
 
         <div className="upi-fallback-summary">
@@ -80,9 +75,9 @@ function UpiPaymentContent() {
         </div>
 
         <button className="upi-fallback-primary" type="button" onClick={retrySelectedApp}>
-          Try {selectedApp.name} again · ₹ {details.amount}
+          Try again · ₹ {details.amount}
         </button>
-        <a className="upi-fallback-any" href={chooserUrl}>Open my UPI app chooser</a>
+        <a className="upi-fallback-any" href={chooserUrl}>Open any UPI app</a>
         <button className="upi-fallback-back" type="button" onClick={copyUpiId}>
           {copied ? "UPI ID copied ✓" : "Copy UPI ID instead"}
         </button>

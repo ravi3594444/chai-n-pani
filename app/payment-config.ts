@@ -1,28 +1,22 @@
 export const UPI_ID = "Q698500876@ybl";
 export const UPI_PAYEE_NAME = "Chai N Pani";
 
+/** Logos only. These are NOT launch targets - see createUpiChooserIntentUrl. */
 export const UPI_APPS = [
   {
     id: "gpay",
     name: "Google Pay",
     logo: "/payment/google-pay-mark.svg",
-    packageName: "com.google.android.apps.nbu.paisa.user",
-    // Google Pay still answers on the legacy Tez scheme; keep both.
-    schemes: ["gpay://upi/pay", "tez://upi/pay"],
   },
   {
     id: "phonepe",
     name: "PhonePe",
     logo: "/payment/phonepe-logo.svg",
-    packageName: "com.phonepe.app",
-    schemes: ["phonepe://pay"],
   },
   {
     id: "paytm",
     name: "Paytm",
     logo: "/payment/paytm-logo.png",
-    packageName: "net.one97.paytm",
-    schemes: ["paytmmp://pay", "paytm://pay"],
   },
 ] as const;
 
@@ -55,34 +49,27 @@ export const createUpiQuery = (amount: string, orderId: string) =>
 
 export const createUpiUrl = (query: string) => `upi://pay?${query}`;
 
-/** Per-app private schemes. These survive in-app WebViews where intent:// does not. */
-export const createUpiAppSchemeUrls = (app: UpiApp, query: string) =>
-  app.schemes.map((scheme) => `${scheme}?${query}`);
-
 const buildIntentUrl = (query: string, extras: string) =>
   `intent://pay?${query}#Intent;scheme=upi;action=android.intent.action.VIEW;` +
   `category=android.intent.category.BROWSABLE;${extras}end`;
 
 /**
- * Package-scoped intent. `S.browser_fallback_url` is now OPT-IN and deliberately
- * unused by the launcher: Chrome fires the fallback the instant the pinned
- * package cannot be resolved, which is why an installed app still ended up on
- * the "try an installed app" page.
+ * Unpinned intent plus a mandatory browser fallback.
+ *
+ * Two hard rules learned the painful way:
+ *
+ * 1. NEVER emit `package=` from a web page. Chrome cannot resolve a UPI app's
+ *    payment activity, because those activities are registered for app-to-app
+ *    invocation with category DEFAULT only - they do not declare BROWSABLE, and
+ *    Chrome force-adds BROWSABLE to every intent:// it launches. Resolution
+ *    fails even when the app is installed.
+ * 2. ALWAYS pass fallbackUrl. When `package=` is set and resolution fails with
+ *    no fallback, Chrome's documented behaviour is to open the Play Store
+ *    listing for that package. That combination is exactly how an installed
+ *    Google Pay ended up showing its own Play Store page.
+ *
+ * Leaving the package off means Android picks from the apps actually installed,
+ * and the fallback means a miss lands on our own retry page, never the store.
  */
-export const createAndroidUpiIntentUrl = (
-  app: UpiApp,
-  query: string,
-  fallbackUrl?: string,
-) =>
-  buildIntentUrl(
-    query,
-    `package=${app.packageName};` +
-      (fallbackUrl ? `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};` : ""),
-  );
-
-/** Unpinned intent — Android shows its own UPI chooser. Most reliable path. */
-export const createUpiChooserIntentUrl = (query: string, fallbackUrl?: string) =>
-  buildIntentUrl(
-    query,
-    fallbackUrl ? `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};` : "",
-  );
+export const createUpiChooserIntentUrl = (query: string, fallbackUrl: string) =>
+  buildIntentUrl(query, `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};`);

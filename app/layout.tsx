@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     title: "Chai N Pani — Order Indian & Indo-Chinese Food",
     description: "Indian mains, Indo-Chinese favourites, quick bites, rice, biryani, drinks and desserts.",
     type: "website",
-    images: [{ url: "/og.png", width: 1731, height: 906, alt: "Chai N Pani Indian and Indo-Chinese menu" }],
+    images: [{ url: "/og.png", width: 1200, height: 628, alt: "Chai N Pani Indian and Indo-Chinese menu" }],
   },
   twitter: {
     card: "summary_large_image",
