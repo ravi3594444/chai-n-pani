@@ -9,7 +9,7 @@ import {
   createUpiQuery,
   type UpiApp,
 } from "../payment-config";
-import { buildUpiAppUrl, buildUpiChooserUrl, launchUpi } from "../upi-launch";
+import { buildUpiAppIntentUrl, buildUpiAppUrl, buildUpiChooserUrl, launchUpi } from "../upi-launch";
 
 function UpiPaymentContent() {
   const query = useSearchParams();
@@ -35,7 +35,7 @@ function UpiPaymentContent() {
 
   const retryApp = useCallback((app: UpiApp) => {
     setStatus(`Opening ${app.name}…`);
-    launchUpi(buildUpiAppUrl(app, nextQuery(), window.location.href), () =>
+    launchUpi(buildUpiAppUrl(app, nextQuery()), () =>
       setStatus(`${app.name} still did not open. Pay ${UPI_ID} by hand from inside any UPI app.`),
     );
   }, [nextQuery]);

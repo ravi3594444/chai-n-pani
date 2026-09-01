@@ -9,6 +9,7 @@ import {
   type UpiApp,
 } from "./payment-config";
 import {
+  buildUpiAppIntentUrl,
   buildUpiAppUrl,
   buildUpiChooserUrl,
   isInAppBrowser,
@@ -69,11 +70,12 @@ export default function Home() {
   const [orderId, setOrderId] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [upiLaunchStatus, setUpiLaunchStatus] = useState("");
+  const [upiRetry, setUpiRetry] = useState<{ label: string; url: string } | null>(null);
   const upiAttemptRef = useRef(0);
 
   useEffect(() => {
     const clearStatus = () => {
-      if (document.visibilityState === "visible") setUpiLaunchStatus("");
+      if (document.visibilityState === "visible") { setUpiLaunchStatus(""); setUpiRetry(null); }
     };
     document.addEventListener("visibilitychange", clearStatus);
     return () => document.removeEventListener("visibilitychange", clearStatus);
@@ -253,13 +255,22 @@ export default function Home() {
   const openUpiApp = (app: UpiApp) => {
     const attempt = upiAttemptRef.current + 1;
     upiAttemptRef.current = attempt;
+    setUpiRetry(null);
     const query = createUpiQuery(basketTotal.toFixed(2), paymentOrderId, attempt);
     setUpiLaunchStatus(`Opening ${app.name}…`);
-    launchUpi(buildUpiAppUrl(app, query, upiFallbackUrl()), () =>
-      setUpiLaunchStatus(
-        `${app.name} did not open. Try another app below, or scan the QR / pay ${UPI_ID} by hand.`,
-      ),
-    );
+    launchUpi(buildUpiAppUrl(app, query), () => {
+      setUpiLaunchStatus(`${app.name} did not open.`);
+      // A fresh anchor tap carries its own user activation, so a second launch
+      // route is legal here where a timed auto-launch is not.
+      setUpiRetry({
+        label: `Try ${app.name} the other way`,
+        url: buildUpiAppIntentUrl(
+          app,
+          createUpiQuery(basketTotal.toFixed(2), paymentOrderId, attempt + 1),
+          upiFallbackUrl(),
+        ),
+      });
+    });
   };
 
   const openAnyUpiApp = () => {
@@ -578,6 +589,7 @@ export default function Home() {
                   Use any other UPI app · ₹ {basketTotal}
                 </button>
                 {upiLaunchStatus && <p className="upi-launch-status" aria-live="polite">{upiLaunchStatus}</p>}
+                {upiRetry && <a className="upi-any-button" href={upiRetry.url}>{upiRetry.label}</a>}
                 <p className="payment-footnote">Each button opens that app directly with the amount, payee and order reference already filled in. If the app isn’t installed you’ll land on a retry page — never the Play Store. Scanning the QR works from any UPI app.</p>
 
                 <div className="payment-divider"><span>or scan to pay</span></div>

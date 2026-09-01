@@ -54,7 +54,10 @@ const VARIANTS = [
   { id: "T5", name: "Plain upi:// link", url: `upi://pay?${q("CNPT5")}` },
   { id: "T6", name: "Google Pay scheme tez://", url: `tez://upi/pay?${q("CNPT6")}` },
   { id: "T7", name: "PhonePe scheme phonepe://", url: `phonepe://pay?${q("CNPT7")}` },
-  { id: "T8", name: "Paytm scheme paytmmp://", url: `paytmmp://pay?${q("CNPT8")}` },
+  { id: "T8", name: "Paytm scheme paytmmp://pay", url: `paytmmp://pay?${q("CNPT8")}` },
+  { id: "T9", name: "Paytm scheme paytmmp://upi/pay", url: `paytmmp://upi/pay?${q("CNPT9")}` },
+  { id: "T10", name: "Paytm scheme paytmmp://cash_wallet", url: `paytmmp://cash_wallet?${q("CNPT10")}&featuretype=money_transfer` },
+  { id: "T11", name: "Google Pay scheme gpay://", url: `gpay://upi/pay?${q("CNPT11")}` },
 ];
 
 type Verdict = "waiting" | "opened" | "nothing";

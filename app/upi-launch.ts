@@ -2,8 +2,8 @@
 
 import {
   createAndroidUpiIntentUrl,
-  createIosUpiUrl,
   createUpiChooserIntentUrl,
+  createUpiSchemeUrl,
   createUpiUrl,
   type UpiApp,
 } from "./payment-config";
@@ -31,11 +31,12 @@ export const isInAppBrowser = (): boolean => {
   return /FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat|Twitter/i.test(navigator.userAgent);
 };
 
-export const buildUpiAppUrl = (app: UpiApp, query: string, fallbackUrl: string): string => {
-  if (isAndroid()) return createAndroidUpiIntentUrl(app, query, fallbackUrl);
-  if (isIos()) return createIosUpiUrl(app, query);
-  return createUpiUrl(query);
-};
+/** Scheme-first on every platform; the intent URL is kept as a manual-retry link. */
+export const buildUpiAppUrl = (app: UpiApp, query: string): string =>
+  createUpiSchemeUrl(app, query);
+
+export const buildUpiAppIntentUrl = (app: UpiApp, query: string, fallbackUrl: string): string =>
+  isAndroid() ? createAndroidUpiIntentUrl(app, query, fallbackUrl) : createUpiSchemeUrl(app, query);
 
 export const buildUpiChooserUrl = (query: string, fallbackUrl: string): string =>
   isAndroid() ? createUpiChooserIntentUrl(query, fallbackUrl) : createUpiUrl(query);

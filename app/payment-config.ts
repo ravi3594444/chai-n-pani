@@ -8,21 +8,25 @@ export const UPI_APPS = [
     logo: "/payment/google-pay-mark.svg",
     packageName: "com.google.android.apps.nbu.paisa.user",
     // tez:// is the scheme Google documents for India; gpay:// is the newer alias.
-    iosScheme: "tez://upi/pay",
+    scheme: "tez://upi/pay",
   },
   {
     id: "phonepe",
     name: "PhonePe",
     logo: "/payment/phonepe-logo.svg",
     packageName: "com.phonepe.app",
-    iosScheme: "phonepe://pay",
+    scheme: "phonepe://pay",
   },
   {
     id: "paytm",
     name: "Paytm",
     logo: "/payment/paytm-logo.png",
     packageName: "net.one97.paytm",
-    iosScheme: "paytmmp://pay",
+    // Paytm has shipped three schemes over the years (pay, upi/pay, cash_wallet).
+    // cash_wallet + featuretype=money_transfer is the one reported working on
+    // current Paytm builds; /upi-test carries all three for verification.
+    scheme: "paytmmp://cash_wallet",
+    schemeExtra: "featuretype=money_transfer",
   },
 ] as const;
 
@@ -61,8 +65,17 @@ export const createUpiQuery = (amount: string, orderId: string, attempt = 1) =>
 
 export const createUpiUrl = (query: string) => `upi://pay?${query}`;
 
-/** iOS has no intent://; the app's own scheme is the only route. */
-export const createIosUpiUrl = (app: UpiApp, query: string) => `${app.iosScheme}?${query}`;
+/**
+ * The app's own scheme — the primary launch mechanism on BOTH platforms.
+ * On iOS it is the only route (no intent://). On Android, Chrome converts an
+ * unknown-scheme navigation into an implicit intent matched BY SCHEME, which
+ * sidesteps the package-pinned resolution path that has failed on real devices
+ * here twice. This is also how gateway checkouts launch specific apps.
+ */
+export const createUpiSchemeUrl = (app: UpiApp, query: string) => {
+  const extra = "schemeExtra" in app && app.schemeExtra ? `&${app.schemeExtra}` : "";
+  return `${app.scheme}?${query}${extra}`;
+};
 
 /**
  * Android intent, pinned to one app.
